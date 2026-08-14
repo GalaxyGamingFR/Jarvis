@@ -30,11 +30,16 @@ function endSession() {
   setMicState("Off");
 }
 
-// Click the reactor anytime to immediately mute — the only manual control, since waking is clap-only.
+// Click the reactor to toggle mute/unmute — the only manual control, since waking is normally clap-only.
 reactor.addEventListener("click", () => {
-  if (recognition && listening) recognition.stop();
-  window.speechSynthesis.cancel();
-  endSession();
+  if (sessionActive) {
+    if (recognition && listening) recognition.stop();
+    window.speechSynthesis.cancel();
+    endSession();
+  } else {
+    beginSession();
+    ws.send(JSON.stringify({ type: "wake" }));
+  }
 });
 
 function addBubble(role, text) {
