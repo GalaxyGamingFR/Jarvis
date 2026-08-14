@@ -23,11 +23,18 @@ function resetIdleTimer() {
   idleTimer = setTimeout(endSession, IDLE_TIMEOUT_MS);
 }
 
+function sendSessionState(active) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "session_state", active }));
+  }
+}
+
 function endSession() {
   sessionActive = false;
   clearTimeout(idleTimer);
   setStatus("Standing by");
   setMicState("Off");
+  sendSessionState(false);
 }
 
 // Click the reactor to toggle mute/unmute — the manual alternative to saying "Hey Jarvis" (which is
@@ -131,6 +138,7 @@ function beginSession() {
   sessionActive = true;
   setMicState("Active");
   resetIdleTimer();
+  sendSessionState(true);
 }
 
 ws.addEventListener("open", () => {

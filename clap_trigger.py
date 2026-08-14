@@ -71,7 +71,19 @@ def pick_input_device():
 
 def on_wake(reason="Wake triggered", tag="clap_trigger"):
     """Shared by clap_trigger.py and wake_word_trigger.py: find and focus an already-open Jarvis tab
-    (nudging it to start listening), or open a new one if none is found."""
+    (nudging it to start listening), or open a new one if none is found.
+
+    Skips entirely if a session is already active anywhere — otherwise Jarvis's own voice coming back
+    through the mic can re-trigger the wake word mid-response, layering a duplicate greeting on top of
+    whatever it's already saying (a classic smart-speaker feedback loop)."""
+    try:
+        resp = requests.get(f"http://{HOST}:{PORT}/session-active", timeout=2)
+        if resp.json().get("active", False):
+            print(f"[{tag}] Ignored — a Jarvis session is already active.", flush=True)
+            return
+    except requests.RequestException:
+        pass  # if we can't check, don't block waking — a missed check shouldn't cost the whole feature
+
     print(f"[{tag}] {reason} — waking Jarvis.", flush=True)
     if focus_jarvis_window():
         print(f"[{tag}] Found an open Jarvis window, brought it to the front.", flush=True)

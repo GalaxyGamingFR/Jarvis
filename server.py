@@ -50,7 +50,39 @@ if not config["gemini_api_key"]:
         "https://aistudio.google.com/apikey"
     )
 
-client = genai.Client(api_key=config["gemini_api_key"])
+def load_gemini_keys() -> list[str]:
+    """Primary key from config/GEMINI_API_KEY, plus any GEMINI_API_KEY_2, _3, ... found in the
+    environment — lets multiple free-tier keys/accounts be rotated across to stretch the combined
+    rate limit further."""
+    keys = [config["gemini_api_key"]]
+    i = 2
+    while True:
+        key = os.getenv(f"GEMINI_API_KEY_{i}", "")
+        if not key:
+            break
+        keys.append(key)
+        i += 1
+    return keys
+
+
+GEMINI_API_KEYS = load_gemini_keys()
+GEMINI_CLIENTS = [genai.Client(api_key=k) for k in GEMINI_API_KEYS]
+print(f"[server] Loaded {len(GEMINI_CLIENTS)} Gemini API key(s).", flush=True)
+
+_next_client_index = 0
+
+
+def assign_client_index() -> int:
+    """Round-robins which key a new session starts on, so fresh conversations spread across keys."""
+    global _next_client_index
+    idx = _next_client_index
+    _next_client_index = (_next_client_index + 1) % len(GEMINI_CLIENTS)
+    return idx
+
+
+def is_rate_limit_error(e: Exception) -> bool:
+    text = f"{type(e).__name__} {e}".lower()
+    return "429" in text or "quota" in text or ("rate" in text and "limit" in text)
 
 SYSTEM_PROMPT = f"""You are Jarvis, {config['user_name']}'s personal AI assistant, in the spirit of \
 Tony Stark's AI: dry, witty, imperturbable, and always a step ahead — but genuinely useful, not just \
@@ -133,8 +165,7 @@ def _to_gemini_result_parts(content_blocks: list[dict]) -> list[dict]:
 GEMINI_TOOLS = [_to_gemini_tool(s) for s in tools.get_tool_schemas()]
 
 
-def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_status) -> tuple[str, str]:
-    """Runs the Gemini tool-calling loop until a final text reply. Returns (text, new_interaction_id)."""
+def _run_with_client(client: genai.Client, user_input, previous_interaction_id, on_status) -> tuple[str, str]:
     interaction = client.interactions.create(
         model=config["gemini_model"],
         system_instruction=SYSTEM_PROMPT,
@@ -171,6 +202,32 @@ def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_stat
     return text, interaction.id
 
 
+def run_agent_turn(
+    user_input: str, previous_interaction_id: str | None, on_status, client_index: int
+) -> tuple[str, str, int]:
+    """Runs the Gemini tool-calling loop, falling back to other API keys if the current one is
+    rate-limited. Returns (text, new_interaction_id, client_index_actually_used).
+
+    Conversation state (previous_interaction_id) is scoped to whichever key created it, so a fallback
+    to a different key has to start a fresh interaction rather than continue the old one — an
+    acceptable tradeoff for a personal assistant vs. failing outright.
+    """
+    last_error: Exception | None = None
+    for attempt in range(len(GEMINI_CLIENTS)):
+        idx = (client_index + attempt) % len(GEMINI_CLIENTS)
+        pid = previous_interaction_id if attempt == 0 else None
+        try:
+            text, new_id = _run_with_client(GEMINI_CLIENTS[idx], user_input, pid, on_status)
+            return text, new_id, idx
+        except Exception as e:
+            last_error = e
+            if is_rate_limit_error(e) and attempt < len(GEMINI_CLIENTS) - 1:
+                on_status("Switching to a backup key...")
+                continue
+            raise
+    raise last_error
+
+
 WAKE_PROMPT = (
     "(System: the user just woke you up — by voice, clap, or manually. Greet them briefly — "
     "mention the time and/or weather if it's natural to, and check their to-do list, mentioning "
@@ -182,14 +239,27 @@ WAKE_PROMPT = (
 active_connections: list[dict] = []
 
 
+def any_session_active() -> bool:
+    """Whether any connected tab currently considers itself mid-conversation (awake and either
+    listening or speaking) — used to stop the wake listener from re-triggering on Jarvis's own voice
+    coming back through the mic (a classic smart-speaker feedback problem)."""
+    return any(c["session_active"] for c in active_connections)
+
+
+@app.get("/session-active")
+def session_active_endpoint():
+    return {"active": any_session_active()}
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     last_interaction_id: str | None = None
+    client_index = assign_client_index()
     loop = asyncio.get_event_loop()
 
     async def handle_turn(user_input: str):
-        nonlocal last_interaction_id
+        nonlocal last_interaction_id, client_index
 
         def on_status(text: str):
             asyncio.run_coroutine_threadsafe(
@@ -197,13 +267,14 @@ async def ws_endpoint(websocket: WebSocket):
             )
 
         try:
-            final_text, new_id = await loop.run_in_executor(
-                None, run_agent_turn, user_input, last_interaction_id, on_status
+            final_text, new_id, used_index = await loop.run_in_executor(
+                None, run_agent_turn, user_input, last_interaction_id, on_status, client_index
             )
             last_interaction_id = new_id
+            client_index = used_index
         except Exception as e:
-            # Most commonly a rate-limit (free-tier Gemini caps requests/min) or transient network
-            # error — fail gracefully instead of dropping the whole WebSocket connection.
+            # Most commonly every key being rate-limited at once, or a transient network error —
+            # fail gracefully instead of dropping the whole WebSocket connection.
             print(f"[server] run_agent_turn failed: {e}", flush=True)
             final_text = "Sorry — I'm having trouble reaching my brain right now. Give it a moment and try again."
 
@@ -212,10 +283,11 @@ async def ws_endpoint(websocket: WebSocket):
 
     async def external_wake():
         """Triggered by /trigger-wake when clap_trigger.py finds this tab already open."""
+        connection["session_active"] = True
         await websocket.send_json({"type": "wake_push"})
         await handle_turn(WAKE_PROMPT)
 
-    connection = {"websocket": websocket, "external_wake": external_wake}
+    connection = {"websocket": websocket, "external_wake": external_wake, "session_active": False}
     active_connections.append(connection)
 
     try:
@@ -224,9 +296,12 @@ async def ws_endpoint(websocket: WebSocket):
             msg = json.loads(raw)
 
             if msg["type"] == "wake":
+                connection["session_active"] = True
                 await handle_turn(WAKE_PROMPT)
             elif msg["type"] == "user_message":
                 await handle_turn(msg["text"])
+            elif msg["type"] == "session_state":
+                connection["session_active"] = bool(msg.get("active"))
     except WebSocketDisconnect:
         pass
     finally:
@@ -241,6 +316,8 @@ async def trigger_wake():
     """clap_trigger.py calls this when it found and refocused an already-open Jarvis window,
     so that tab starts listening without needing a full page reload."""
     for connection in list(active_connections):
+        if connection["session_active"]:
+            continue  # already mid-conversation — don't layer a duplicate greeting on top
         # asyncio only holds a weak reference to tasks — without keeping one ourselves, the task
         # can get garbage-collected mid-run and silently never finish.
         task = asyncio.create_task(connection["external_wake"]())

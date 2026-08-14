@@ -58,7 +58,11 @@ def focus_jarvis_window() -> bool:
     if hwnd is None:
         return False
 
-    user32.ShowWindow(hwnd, SW_RESTORE)
+    # Only restore if actually minimized — calling this unconditionally would kick a maximized or
+    # fullscreen window (F11) back to its normal windowed size every time, which is exactly why
+    # fullscreen kept getting kicked out on every wake trigger.
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, SW_RESTORE)
 
     # SetForegroundWindow is blocked by Windows unless the caller already "owns" focus — temporarily
     # attaching input state to the current foreground thread is the standard workaround for this.
