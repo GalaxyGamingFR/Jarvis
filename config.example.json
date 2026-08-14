@@ -1,0 +1,19 @@
+{
+  "anthropic_api_key": "",
+  "anthropic_model": "claude-sonnet-5",
+  "elevenlabs_api_key": "",
+  "elevenlabs_voice_id": "",
+  "user_name": "sir",
+  "default_location": "New York",
+  "wake_greeting": "Welcome back, {user_name}. Systems online.",
+  "apps": {
+    "spotify": "spotify:",
+    "vscode": "code",
+    "chrome": "chrome",
+    "obsidian": "obsidian://open",
+    "notepad": "notepad",
+    "explorer": "explorer"
+  },
+  "server_host": "127.0.0.1",
+  "server_port": 8420
+}

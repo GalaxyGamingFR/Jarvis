@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+anthropic
+python-dotenv
+playwright
+pillow
+sounddevice
+numpy
+requests
+websockets
