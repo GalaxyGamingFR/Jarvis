@@ -6,12 +6,43 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <main>
-    <div class="orb" id="orb"></div>
-    <div class="status" id="status">Standing by</div>
+  <div class="hud">
+    <div class="panel panel-tl">
+      <div class="panel-label">Local Time</div>
+      <div class="panel-value" id="clock">--:--:--</div>
+      <div class="panel-sub" id="clockDate">-</div>
+    </div>
+
+    <div class="panel panel-tr">
+      <div class="panel-label">Conditions</div>
+      <div class="panel-value" id="weatherTemp">--</div>
+      <div class="panel-sub" id="weatherDesc">Loading...</div>
+    </div>
+
+    <div class="reactor-wrap">
+      <svg class="reactor" id="reactor" viewBox="0 0 300 300">
+        <circle class="ring ring-outer" cx="150" cy="150" r="140" />
+        <circle class="ring ring-tick" cx="150" cy="150" r="120" />
+        <circle class="ring ring-mid" cx="150" cy="150" r="95" />
+        <circle class="ring ring-inner" cx="150" cy="150" r="60" />
+        <polygon class="core" points="150,105 189,172 111,172" />
+        <circle class="core-dot" cx="150" cy="150" r="10" />
+      </svg>
+      <div class="reactor-caption" id="status">Standing by</div>
+    </div>
+
+    <div class="panel panel-bl">
+      <div class="panel-label">User</div>
+      <div class="panel-value" id="userName">-</div>
+      <div class="panel-sub" id="location">-</div>
+    </div>
+
+    <div class="panel panel-br">
+      <button id="micBtn" class="mic-btn">Hold to talk</button>
+    </div>
+
     <div class="log" id="log"></div>
-    <button id="micBtn" class="mic-btn">Hold to talk</button>
-  </main>
+  </div>
   <script src="/static/main.js"></script>
 </body>
 </html>

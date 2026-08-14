@@ -1,4 +1,4 @@
-const orb = document.getElementById("orb");
+const reactor = document.getElementById("reactor");
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
 const micBtn = document.getElementById("micBtn");
@@ -9,6 +9,40 @@ const autolisten = new URLSearchParams(location.search).get("autolisten") === "1
 function setStatus(text) {
   statusEl.textContent = text;
 }
+
+// --- clock + weather corner panels ---
+function tickClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent = now.toLocaleTimeString([], { hour12: false });
+  document.getElementById("clockDate").textContent = now.toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+async function refreshStatus() {
+  try {
+    const resp = await fetch("/status");
+    const data = await resp.json();
+    document.getElementById("userName").textContent = data.user_name;
+    document.getElementById("location").textContent = data.location;
+
+    const match = data.weather.match(/(-?\d+(?:\.\d+)?)\s*°?F?,\s*(.+?),/);
+    if (match) {
+      document.getElementById("weatherTemp").textContent = `${match[1]}°F`;
+      document.getElementById("weatherDesc").textContent = match[2];
+    } else {
+      document.getElementById("weatherDesc").textContent = data.weather;
+    }
+  } catch (e) {
+    document.getElementById("weatherDesc").textContent = "Unavailable";
+  }
+}
+refreshStatus();
+setInterval(refreshStatus, 5 * 60 * 1000);
 
 function addBubble(role, text) {
   const el = document.createElement("div");
@@ -30,11 +64,11 @@ function pickBritishVoice() {
 }
 
 function speak(text, audioB64) {
-  orb.classList.add("speaking");
+  reactor.classList.add("speaking");
   setStatus("Speaking");
 
   const onDone = () => {
-    orb.classList.remove("speaking");
+    reactor.classList.remove("speaking");
     setStatus("Standing by");
   };
 
@@ -96,13 +130,13 @@ if (SpeechRecognition) {
 
   recognition.onend = () => {
     listening = false;
-    orb.classList.remove("listening");
+    reactor.classList.remove("listening");
     micBtn.classList.remove("active");
   };
 
   recognition.onerror = () => {
     listening = false;
-    orb.classList.remove("listening");
+    reactor.classList.remove("listening");
     micBtn.classList.remove("active");
     setStatus("Standing by");
   };
@@ -110,7 +144,7 @@ if (SpeechRecognition) {
   const startListening = () => {
     if (listening) return;
     listening = true;
-    orb.classList.add("listening");
+    reactor.classList.add("listening");
     micBtn.classList.add("active");
     setStatus("Listening");
     recognition.start();

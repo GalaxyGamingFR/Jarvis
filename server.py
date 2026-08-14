@@ -71,6 +71,17 @@ def index():
     return FileResponse(str(Path(__file__).parent / "frontend" / "index.html"))
 
 
+@app.get("/status")
+def status():
+    """Cheap, non-LLM data for the HUD's corner readouts (no Gemini call)."""
+    return {
+        "datetime": tools.get_current_datetime(),
+        "weather": tools.get_weather(None, config.get("default_location", "")),
+        "user_name": config.get("user_name", "sir"),
+        "location": config.get("default_location", ""),
+    }
+
+
 def synthesize_speech(text: str) -> str | None:
     """Returns base64-encoded MP3 via ElevenLabs, or None if not configured (client falls back to browser TTS)."""
     if not config.get("elevenlabs_api_key") or not config.get("elevenlabs_voice_id"):
