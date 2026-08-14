@@ -30,7 +30,8 @@ function endSession() {
   setMicState("Off");
 }
 
-// Click the reactor to toggle mute/unmute — the only manual control, since waking is normally clap-only.
+// Click the reactor to toggle mute/unmute — the manual alternative to saying "Hey Jarvis" (which is
+// detected server-side, by wake_word_trigger.py, not in the browser — see that file).
 reactor.addEventListener("click", () => {
   if (sessionActive) {
     if (recognition && listening) recognition.stop();

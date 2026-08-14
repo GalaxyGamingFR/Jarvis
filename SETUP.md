@@ -1,8 +1,9 @@
 # Jarvis — Setup
 
-A local, clap-activated personal assistant: double-clap to wake it, talk to it in the browser tab
-that pops up, and it can search the web, browse pages, look at your screen, launch apps, and check
-the weather/time — powered by Gemini's free API tier (no usage-based billing).
+A local, voice-activated personal assistant: say "Hey Jarvis" to wake it, talk to it in the browser
+tab that pops up (or gets refocused if already open), and it can search the web, browse pages, look
+at your screen, launch apps, and check the weather/time — powered by Gemini's free API tier (no
+usage-based billing).
 
 ## 1. Prerequisites
 
@@ -35,7 +36,9 @@ Edit `config.json`:
 | `user_name` | What Jarvis calls you (default `"sir"`). |
 | `default_location` | City used for weather when you don't specify one. |
 | `apps` | Map of app keys → launch commands/paths, used by the `launch_app` tool. Add your own (e.g. `"discord": "C:\\Users\\you\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe"`). |
-| `clap_threshold` | Mic RMS level (0–1) that counts as a clap. Lower = more sensitive. Tune this if wake triggers too easily or not at all. |
+| `mic_device` | Substring of the exact microphone name to listen on (e.g. `"AMD Audio Dev"`), used by `wake_word_trigger.py`/`clap_trigger.py`. Windows often defaults to the wrong device (virtual/streaming mics are common culprits) — if wake detection isn't working, check Windows Settings → Sound → Input for which device actually shows activity when you talk, and put its name here. |
+| `wake_word_threshold` | Confidence (0–1) the "Hey Jarvis" detector needs to trigger. Default `0.5`. Lower if it's not triggering, raise if it's too trigger-happy. |
+| `clap_threshold` | Only used by the legacy `clap_trigger.py`. Mic RMS level (0–1) that counts as a clap. |
 
 ### Getting a JARVIS-style voice (optional but recommended)
 
@@ -55,23 +58,31 @@ Language → Speech → Add a voice → **English (United Kingdom)**. Jarvis wil
 python server.py
 ```
 
-Open **http://127.0.0.1:8420** in Chrome, allow microphone access, and press **Hold to talk** to test.
+Open **http://127.0.0.1:8420** in Chrome and allow microphone access. There's no manual "talk" button
+by design — click the reactor (the glowing triangle) to manually start/stop listening, or set up wake
+detection below for the real hands-free experience.
 
-## 5. Turn on clap-to-wake
+## 5. Turn on "Hey Jarvis" wake detection
 
 In a second terminal (server must already be running):
 
 ```powershell
-python clap_trigger.py
+python wake_word_trigger.py
 ```
 
-Double-clap near your mic — it'll open the Jarvis tab and greet you. If it's not triggering or
-triggers too easily, adjust `clap_threshold` in `config.json`.
+This runs fully offline (via [openWakeWord](https://github.com/dscripka/openWakeWord)'s pretrained
+"hey jarvis" model — no cloud, no API key). Say **"Hey Jarvis"** near your mic — it'll find and
+refocus an already-open Jarvis tab, or open a new one from scratch if none is open, then greet you
+and start listening. If it's not triggering (or triggers on nothing), see the `mic_device` and
+`wake_word_threshold` notes above — getting the right microphone selected is the most common issue.
+
+A legacy double-clap trigger (`clap_trigger.py`) also still exists if you'd rather use that instead —
+same wake behavior, just clap-activated instead of voice-activated.
 
 ## 6. (Optional) Auto-start at login
 
-Use `scripts/launch-session.ps1` — it starts both `server.py` and `clap_trigger.py`. Register it in
-Windows Task Scheduler as an "At log on" trigger, action: `powershell.exe -File
+Use `scripts/launch-session.ps1` — it starts both `server.py` and `wake_word_trigger.py`. Register it
+in Windows Task Scheduler as an "At log on" trigger, action: `powershell.exe -File
 "<full path to>\scripts\launch-session.ps1"`.
 
 ## Notes

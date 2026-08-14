@@ -170,12 +170,12 @@ def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_stat
 
 
 WAKE_PROMPT = (
-    "(System: the user just clapped to wake you up. Greet them briefly — "
+    "(System: the user just woke you up — by voice, clap, or manually. Greet them briefly — "
     "mention the time and/or weather if it's natural to. 1-2 sentences.)"
 )
 
-# Connections currently viewing the page, so a clap can nudge an already-open tab instead of
-# always opening a new one (see /trigger-wake).
+# Connections currently viewing the page, so a clap/wake-word can nudge an already-open tab instead
+# of always opening a new one (see /trigger-wake).
 active_connections: list[dict] = []
 
 
@@ -193,10 +193,17 @@ async def ws_endpoint(websocket: WebSocket):
                 websocket.send_json({"type": "status", "text": text}), loop
             )
 
-        final_text, new_id = await loop.run_in_executor(
-            None, run_agent_turn, user_input, last_interaction_id, on_status
-        )
-        last_interaction_id = new_id
+        try:
+            final_text, new_id = await loop.run_in_executor(
+                None, run_agent_turn, user_input, last_interaction_id, on_status
+            )
+            last_interaction_id = new_id
+        except Exception as e:
+            # Most commonly a rate-limit (free-tier Gemini caps requests/min) or transient network
+            # error — fail gracefully instead of dropping the whole WebSocket connection.
+            print(f"[server] run_agent_turn failed: {e}", flush=True)
+            final_text = "Sorry — I'm having trouble reaching my brain right now. Give it a moment and try again."
+
         audio_b64 = synthesize_speech(final_text)
         await websocket.send_json({"type": "assistant_message", "text": final_text, "audio_b64": audio_b64})
 

@@ -23,7 +23,7 @@ WAKE_URL = f"http://{HOST}:{PORT}/?autolisten=1"
 
 BLOCK_MS = 30  # actual samplerate/blocksize are picked per-device in main() — see note there
 
-CLAP_THRESHOLD = config.get("clap_threshold", 0.35)   # RMS amplitude (0-1) counted as a clap
+CLAP_THRESHOLD = config.get("clap_threshold", 0.2)    # RMS amplitude (0-1) counted as a clap
 CLAP_REFRACTORY_S = 0.25                               # ignore new claps for this long after one is detected
 DOUBLE_CLAP_WINDOW_S = 1.2                              # max gap between the two claps
 COOLDOWN_AFTER_WAKE_S = 4.0                             # ignore everything right after waking
@@ -70,14 +70,16 @@ def pick_input_device():
     return default_idx
 
 
-def on_wake():
-    print("[clap_trigger] Double clap detected — waking Jarvis.", flush=True)
+def on_wake(reason="Wake triggered", tag="clap_trigger"):
+    """Shared by clap_trigger.py and wake_word_trigger.py: find and focus an already-open Jarvis tab
+    (nudging it to start listening), or open a new one if none is found."""
+    print(f"[{tag}] {reason} — waking Jarvis.", flush=True)
     if focus_jarvis_window():
-        print("[clap_trigger] Found an open Jarvis window, brought it to the front.", flush=True)
+        print(f"[{tag}] Found an open Jarvis window, brought it to the front.", flush=True)
         try:
             requests.post(f"http://{HOST}:{PORT}/trigger-wake", timeout=5)
         except requests.RequestException as e:
-            print(f"[clap_trigger] Focused the window but couldn't nudge it to listen: {e}", flush=True)
+            print(f"[{tag}] Focused the window but couldn't nudge it to listen: {e}", flush=True)
     else:
         webbrowser.open(WAKE_URL)
 
@@ -106,7 +108,7 @@ def audio_callback(indata, frames, time_info, status):
     if len(clap_times) >= 2:
         clap_times = []
         last_wake_time = now
-        on_wake()
+        on_wake("Double clap detected")
 
 
 def main():

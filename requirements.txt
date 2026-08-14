@@ -8,3 +8,5 @@ sounddevice
 numpy
 requests
 websockets
+openwakeword
+scipy
