@@ -1,17 +1,17 @@
-"""Jarvis backend: FastAPI + WebSocket chat, Claude tool-calling loop, ElevenLabs TTS."""
+"""Jarvis backend: FastAPI + WebSocket chat, Gemini tool-calling loop, ElevenLabs TTS."""
 import asyncio
 import base64
 import json
 import os
 from pathlib import Path
 
-import anthropic
 import requests
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from google import genai
 
 import tools
 
@@ -19,11 +19,13 @@ load_dotenv()
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 
+MAX_TOOL_ROUNDS = 8  # safety cap so a confused tool loop can't run forever
+
 
 def load_config() -> dict:
     config = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    config.setdefault("anthropic_api_key", os.getenv("ANTHROPIC_API_KEY", ""))
-    config.setdefault("anthropic_model", "claude-sonnet-5")
+    config.setdefault("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
+    config.setdefault("gemini_model", "gemini-3-flash-preview")
     config.setdefault("elevenlabs_api_key", os.getenv("ELEVENLABS_API_KEY", ""))
     config.setdefault("elevenlabs_voice_id", os.getenv("ELEVENLABS_VOICE_ID", ""))
     config.setdefault("user_name", "sir")
@@ -32,20 +34,21 @@ def load_config() -> dict:
     config.setdefault("apps", {})
     config.setdefault("server_host", "127.0.0.1")
     config.setdefault("server_port", 8420)
-    if not config["anthropic_api_key"]:
-        config["anthropic_api_key"] = os.getenv("ANTHROPIC_API_KEY", "")
+    if not config["gemini_api_key"]:
+        config["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
     return config
 
 
 config = load_config()
 
-if not config["anthropic_api_key"]:
+if not config["gemini_api_key"]:
     raise RuntimeError(
-        "No Anthropic API key found. Copy config.example.json to config.json and set "
-        "anthropic_api_key, or put ANTHROPIC_API_KEY in a .env file."
+        "No Gemini API key found. Copy config.example.json to config.json and set "
+        "gemini_api_key, or put GEMINI_API_KEY in a .env file. Get a free key at "
+        "https://aistudio.google.com/apikey"
     )
 
-client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+client = genai.Client(api_key=config["gemini_api_key"])
 
 SYSTEM_PROMPT = f"""You are Jarvis, {config['user_name']}'s personal AI assistant, in the spirit of \
 Tony Stark's AI: dry, witty, imperturbable, and always a step ahead — but genuinely useful, not just \
@@ -89,45 +92,90 @@ def synthesize_speech(text: str) -> str | None:
         return None
 
 
-def run_agent_turn(history: list, on_status) -> str:
-    """Runs the Claude tool-calling loop until a final text reply. Mutates history in place."""
-    tool_schemas = tools.get_tool_schemas()
-    while True:
-        response = client.messages.create(
-            model=config["anthropic_model"],
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=tool_schemas,
-            messages=history,
-        )
-        history.append({"role": "assistant", "content": response.content})
+def _to_gemini_tool(schema: dict) -> dict:
+    return {
+        "type": "function",
+        "name": schema["name"],
+        "description": schema["description"],
+        "parameters": schema["input_schema"],
+    }
 
-        if response.stop_reason != "tool_use":
-            return "".join(block.text for block in response.content if block.type == "text")
 
-        tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
+def _to_gemini_result_parts(content_blocks: list[dict]) -> list[dict]:
+    parts = []
+    for block in content_blocks:
+        if block["type"] == "text":
+            parts.append({"type": "text", "text": block["text"]})
+        elif block["type"] == "image":
+            parts.append(
+                {
+                    "type": "image",
+                    "mime_type": block["source"]["media_type"],
+                    "data": block["source"]["data"],
+                }
+            )
+    return parts
+
+
+GEMINI_TOOLS = [_to_gemini_tool(s) for s in tools.get_tool_schemas()]
+
+
+def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_status) -> tuple[str, str]:
+    """Runs the Gemini tool-calling loop until a final text reply. Returns (text, new_interaction_id)."""
+    interaction = client.interactions.create(
+        model=config["gemini_model"],
+        system_instruction=SYSTEM_PROMPT,
+        input=user_input,
+        tools=GEMINI_TOOLS,
+        previous_interaction_id=previous_interaction_id,
+    )
+
+    rounds = 0
+    while interaction.status == "requires_action" and rounds < MAX_TOOL_ROUNDS:
+        rounds += 1
+        results_input = []
+        for step in interaction.steps:
+            if step.type != "function_call":
                 continue
-            on_status(f"Using {block.name}...")
-            result_content = tools.dispatch_tool(block.name, block.input, config)
-            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_content})
-        history.append({"role": "user", "content": tool_results})
+            on_status(f"Using {step.name}...")
+            content_blocks = tools.dispatch_tool(step.name, step.arguments, config)
+            results_input.append(
+                {
+                    "type": "function_result",
+                    "name": step.name,
+                    "call_id": step.id,
+                    "result": _to_gemini_result_parts(content_blocks),
+                }
+            )
+        interaction = client.interactions.create(
+            model=config["gemini_model"],
+            previous_interaction_id=interaction.id,
+            input=results_input,
+            tools=GEMINI_TOOLS,
+        )
+
+    text = interaction.output_text or "Sorry, I got stuck on that one."
+    return text, interaction.id
 
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
-    history: list = []
+    last_interaction_id: str | None = None
     loop = asyncio.get_event_loop()
 
-    async def handle_turn():
+    async def handle_turn(user_input: str):
+        nonlocal last_interaction_id
+
         def on_status(text: str):
             asyncio.run_coroutine_threadsafe(
                 websocket.send_json({"type": "status", "text": text}), loop
             )
 
-        final_text = await loop.run_in_executor(None, run_agent_turn, history, on_status)
+        final_text, new_id = await loop.run_in_executor(
+            None, run_agent_turn, user_input, last_interaction_id, on_status
+        )
+        last_interaction_id = new_id
         audio_b64 = synthesize_speech(final_text)
         await websocket.send_json({"type": "assistant_message", "text": final_text, "audio_b64": audio_b64})
 
@@ -137,19 +185,12 @@ async def ws_endpoint(websocket: WebSocket):
             msg = json.loads(raw)
 
             if msg["type"] == "wake":
-                history.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "(System: the user just clapped to wake you up. Greet them briefly — "
-                            "mention the time and/or weather if it's natural to. 1-2 sentences.)"
-                        ),
-                    }
+                await handle_turn(
+                    "(System: the user just clapped to wake you up. Greet them briefly — "
+                    "mention the time and/or weather if it's natural to. 1-2 sentences.)"
                 )
-                await handle_turn()
             elif msg["type"] == "user_message":
-                history.append({"role": "user", "content": msg["text"]})
-                await handle_turn()
+                await handle_turn(msg["text"])
     except WebSocketDisconnect:
         pass
 

@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-anthropic
+google-genai
 python-dotenv
 playwright
 pillow

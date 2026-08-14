@@ -2,13 +2,14 @@
 
 A local, clap-activated personal assistant: double-clap to wake it, talk to it in the browser tab
 that pops up, and it can search the web, browse pages, look at your screen, launch apps, and check
-the weather/time — powered by Claude.
+the weather/time — powered by Gemini's free API tier (no usage-based billing).
 
 ## 1. Prerequisites
 
 - Python 3.10+
 - Google Chrome (used for the UI's speech recognition and browser automation)
-- An [Anthropic API key](https://console.anthropic.com/settings/keys)
+- A free [Gemini API key](https://aistudio.google.com/apikey) (sign in with a Google account, no
+  card required — the free tier is permanent, not a trial: ~15 requests/min, 1,500/day)
 
 ## 2. Install
 
@@ -28,8 +29,8 @@ Edit `config.json`:
 
 | Field | What it does |
 |---|---|
-| `anthropic_api_key` | Required. Your Claude API key. (Or set `ANTHROPIC_API_KEY` in a `.env` file instead.) |
-| `anthropic_model` | Defaults to `claude-sonnet-5`. Use `claude-haiku-4-5-20251001` for a cheaper/faster assistant. |
+| `gemini_api_key` | Required. Your free Gemini API key. (Or set `GEMINI_API_KEY` in a `.env` file instead — this is what's already set up.) |
+| `gemini_model` | Defaults to `gemini-3-flash-preview`. If Google renames/retires this preview model, check https://ai.google.dev/gemini-api/docs/models for the current free-tier flash model and update this. |
 | `elevenlabs_api_key` / `elevenlabs_voice_id` | Optional. Enables a real, expressive JARVIS-style voice. Without these, Jarvis speaks using your browser/Windows built-in TTS instead (still works, just more robotic). |
 | `user_name` | What Jarvis calls you (default `"sir"`). |
 | `default_location` | City used for weather when you don't specify one. |
@@ -75,9 +76,10 @@ Windows Task Scheduler as an "At log on" trigger, action: `powershell.exe -File
 
 ## Notes
 
-- **Costs**: Claude API calls are billed per use (a normal reply is a fraction of a cent; tool-heavy
-  turns cost more). ElevenLabs' free tier covers light daily use.
-- **Privacy**: Everything routes through your own machine except the Claude API call itself and
+- **Costs**: $0. Gemini's free API tier has no billing attached — it's rate-limited (15 req/min,
+  1,500/day), not metered. Normal personal use won't come close. ElevenLabs (if you add it) has its
+  own separate free tier for TTS.
+- **Privacy**: Everything routes through your own machine except the Gemini API call itself and
   (optionally) ElevenLabs for TTS. Screen captures and browser automation never leave your machine
   except as part of what you explicitly ask Jarvis to look at.
 - **Extending it**: `tools.py` is the single place tool schemas + dispatch live — add a function
