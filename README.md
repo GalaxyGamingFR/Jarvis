@@ -1,0 +1,63 @@
+# Jarvis
+
+A local, voice-activated personal assistant. Say **"Hey Jarvis"**, talk to it, and it can search the
+web, browse pages, look at your screen, launch apps, check the weather/time, and manage a to-do list —
+all through a JARVIS-style HUD in your browser.
+
+Runs entirely on your own machine except for the LLM call itself (Google Gemini's free API tier — no
+usage-based billing) and, optionally, ElevenLabs for a richer voice.
+
+## Features
+
+- **"Hey Jarvis" wake word** — fully offline detection via [openWakeWord](https://github.com/dscripka/openWakeWord),
+  no cloud, no account. Finds and refocuses an already-open Jarvis tab, or opens a new one from
+  scratch if none is open.
+- **Hands-free conversation** — wakes, greets you with the time/weather/pending tasks, listens for
+  what you say, responds, and keeps listening for follow-ups until you go quiet or click to mute.
+- **Real tool use** — web search & page reading, screen vision, app launching, weather, a to-do list —
+  not just a chatbot.
+- **JARVIS-style HUD** — an animated reactor core with live time/weather/status readouts, no
+  cluttered chat UI.
+- **$0 to run** — Gemini's free API tier is rate-limited, not metered.
+
+## Quick start
+
+See [SETUP.md](SETUP.md) for full setup instructions (API keys, config, running it, auto-start at
+login). The short version:
+
+```powershell
+pip install -r requirements.txt
+playwright install chromium
+copy config.example.json config.json
+# add your Gemini API key to config.json or a .env file
+python server.py          # in one terminal
+python wake_word_trigger.py   # in another
+```
+
+Then say "Hey Jarvis" near your mic.
+
+## Project layout
+
+| File | What it does |
+|---|---|
+| `server.py` | FastAPI backend — WebSocket chat, Gemini tool-calling loop, ElevenLabs TTS |
+| `wake_word_trigger.py` | Background listener for "Hey Jarvis" (openWakeWord) |
+| `clap_trigger.py` | Legacy double-clap wake trigger, kept as an alternative |
+| `window_focus.py` | Finds/refocuses an already-open Jarvis tab on Windows |
+| `tools.py` | Tool schemas + dispatch — the place to add new capabilities |
+| `browser_tools.py` | Web search & page reading (Playwright) |
+| `screen_capture.py` | Screenshot → Claude/Gemini vision |
+| `app_launcher.py` | Launches configured apps (Spotify, VS Code, etc.) |
+| `tasks.py` | Local to-do list |
+| `frontend/` | The HUD web UI (no framework — plain HTML/CSS/JS) |
+| `config.example.json` | Copy to `config.json` and fill in |
+
+## Not cloning the actual movie voice
+
+ElevenLabs' voice library has plenty of British-butler-style voices that land a similar vibe, but
+this project doesn't attempt to clone the real JARVIS voice from the films — that's a real actor's
+protected performance. See [SETUP.md](SETUP.md) for picking a voice.
+
+## License
+
+Personal project, no license file — ask before reusing.
