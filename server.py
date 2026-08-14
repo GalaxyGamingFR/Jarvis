@@ -169,6 +169,16 @@ def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_stat
     return text, interaction.id
 
 
+WAKE_PROMPT = (
+    "(System: the user just clapped to wake you up. Greet them briefly — "
+    "mention the time and/or weather if it's natural to. 1-2 sentences.)"
+)
+
+# Connections currently viewing the page, so a clap can nudge an already-open tab instead of
+# always opening a new one (see /trigger-wake).
+active_connections: list[dict] = []
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -190,20 +200,43 @@ async def ws_endpoint(websocket: WebSocket):
         audio_b64 = synthesize_speech(final_text)
         await websocket.send_json({"type": "assistant_message", "text": final_text, "audio_b64": audio_b64})
 
+    async def external_wake():
+        """Triggered by /trigger-wake when clap_trigger.py finds this tab already open."""
+        await websocket.send_json({"type": "wake_push"})
+        await handle_turn(WAKE_PROMPT)
+
+    connection = {"websocket": websocket, "external_wake": external_wake}
+    active_connections.append(connection)
+
     try:
         while True:
             raw = await websocket.receive_text()
             msg = json.loads(raw)
 
             if msg["type"] == "wake":
-                await handle_turn(
-                    "(System: the user just clapped to wake you up. Greet them briefly — "
-                    "mention the time and/or weather if it's natural to. 1-2 sentences.)"
-                )
+                await handle_turn(WAKE_PROMPT)
             elif msg["type"] == "user_message":
                 await handle_turn(msg["text"])
     except WebSocketDisconnect:
         pass
+    finally:
+        active_connections.remove(connection)
+
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+@app.post("/trigger-wake")
+async def trigger_wake():
+    """clap_trigger.py calls this when it found and refocused an already-open Jarvis window,
+    so that tab starts listening without needing a full page reload."""
+    for connection in list(active_connections):
+        # asyncio only holds a weak reference to tasks — without keeping one ourselves, the task
+        # can get garbage-collected mid-run and silently never finish.
+        task = asyncio.create_task(connection["external_wake"]())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+    return {"woke": len(active_connections)}
 
 
 if __name__ == "__main__":

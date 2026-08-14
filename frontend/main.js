@@ -121,19 +121,26 @@ function speak(text, audioB64) {
   window.speechSynthesis.speak(utter);
 }
 
+function beginSession() {
+  sessionActive = true;
+  setMicState("Active");
+  resetIdleTimer();
+}
+
 ws.addEventListener("open", () => {
   setStatus("Standing by");
   if (autolisten) {
-    sessionActive = true;
-    setMicState("Active");
-    resetIdleTimer();
+    beginSession();
     ws.send(JSON.stringify({ type: "wake" }));
   }
 });
 
 ws.addEventListener("message", (event) => {
   const msg = JSON.parse(event.data);
-  if (msg.type === "status") {
+  if (msg.type === "wake_push") {
+    // clap_trigger.py found this tab already open and refocused it instead of opening a new one
+    beginSession();
+  } else if (msg.type === "status") {
     setStatus(msg.text);
   } else if (msg.type === "assistant_message") {
     addBubble("assistant", msg.text);

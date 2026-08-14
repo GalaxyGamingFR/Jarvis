@@ -8,7 +8,10 @@ import webbrowser
 from pathlib import Path
 
 import numpy as np
+import requests
 import sounddevice as sd
+
+from window_focus import focus_jarvis_window
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 config = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
@@ -33,7 +36,14 @@ last_wake_time = 0.0
 
 def on_wake():
     print("[clap_trigger] Double clap detected — waking Jarvis.")
-    webbrowser.open(WAKE_URL)
+    if focus_jarvis_window():
+        print("[clap_trigger] Found an open Jarvis window, brought it to the front.")
+        try:
+            requests.post(f"http://{HOST}:{PORT}/trigger-wake", timeout=5)
+        except requests.RequestException as e:
+            print(f"[clap_trigger] Focused the window but couldn't nudge it to listen: {e}")
+    else:
+        webbrowser.open(WAKE_URL)
 
 
 def audio_callback(indata, frames, time_info, status):
