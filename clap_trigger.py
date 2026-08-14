@@ -5,7 +5,6 @@ Run this alongside server.py (see SETUP.md for running it at login via Task Sche
 import json
 import os
 import time
-import webbrowser
 from pathlib import Path
 
 import numpy as np
@@ -81,7 +80,10 @@ def on_wake(reason="Wake triggered", tag="clap_trigger"):
         except requests.RequestException as e:
             print(f"[{tag}] Focused the window but couldn't nudge it to listen: {e}", flush=True)
     else:
-        webbrowser.open(WAKE_URL)
+        # microsoft-edge: is a protocol Windows/Edge registers specifically to open a URL in Edge —
+        # bypasses whatever the OS default browser is set to (webbrowser.open() would respect that
+        # default, which on this machine is Opera GX, not what we want for a dedicated Jarvis window).
+        os.startfile(f"microsoft-edge:{WAKE_URL}")
 
 
 def audio_callback(indata, frames, time_info, status):

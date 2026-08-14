@@ -18,6 +18,11 @@ SW_RESTORE = 9
 # to the *start* of the title avoids both.
 _TITLE_PATTERN = re.compile(r"^Jarvis($| - | and \d+ more pages)")
 
+# Only ever refocus a Jarvis tab that's already in Edge — never Opera GX or anything else the user
+# might be actively using for unrelated browsing. New windows are also always opened in Edge
+# specifically (see clap_trigger.py's on_wake), so this should be the only browser Jarvis ever lives in.
+_ALLOWED_BROWSER_MARKER = "edge"
+
 
 def _find_jarvis_tab_window() -> int | None:
     found = []
@@ -31,7 +36,8 @@ def _find_jarvis_tab_window() -> int | None:
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
-        if _TITLE_PATTERN.match(buf.value):
+        title = buf.value
+        if _TITLE_PATTERN.match(title) and _ALLOWED_BROWSER_MARKER in title.lower():
             found.append(hwnd)
             return False
         return True
