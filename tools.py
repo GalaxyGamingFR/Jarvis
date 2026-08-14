@@ -6,6 +6,7 @@ import requests
 import app_launcher
 import browser_tools
 import screen_capture
+import tasks
 
 _WEATHER_CODES = {
     0: "clear sky", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
@@ -77,6 +78,9 @@ def get_tool_schemas() -> list[dict]:
         app_launcher.TOOL_SCHEMA,
         WEATHER_SCHEMA,
         DATETIME_SCHEMA,
+        tasks.LIST_TASKS_SCHEMA,
+        tasks.ADD_TASK_SCHEMA,
+        tasks.COMPLETE_TASK_SCHEMA,
     ]
 
 
@@ -98,4 +102,10 @@ def dispatch_tool(name: str, tool_input: dict, config: dict) -> list[dict]:
         return [{"type": "text", "text": get_weather(tool_input.get("location"), config.get("default_location", ""))}]
     if name == "get_current_datetime":
         return [{"type": "text", "text": get_current_datetime()}]
+    if name == "list_tasks":
+        return [{"type": "text", "text": tasks.list_tasks()}]
+    if name == "add_task":
+        return [{"type": "text", "text": tasks.add_task(tool_input["text"])}]
+    if name == "complete_task":
+        return [{"type": "text", "text": tasks.complete_task(tool_input["text"])}]
     return [{"type": "text", "text": f"Unknown tool: {name}"}]

@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 config.json
+tasks.json
 .env
 *.log
 .DS_Store

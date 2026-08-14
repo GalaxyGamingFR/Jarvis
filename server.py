@@ -59,8 +59,8 @@ One to three sentences unless the user asks for detail. No markdown, no bullet p
 just natural spoken language.
 
 You have tools to search the web, open and read pages, view the user's screen, launch apps, check \
-the weather, and check the time/date. Use them proactively when they'd help — don't ask permission \
-first, just do it and report back concisely."""
+the weather, check the time/date, and manage a to-do list (list/add/complete tasks). Use them \
+proactively when they'd help — don't ask permission first, just do it and report back concisely."""
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "frontend")), name="static")
@@ -171,7 +171,8 @@ def run_agent_turn(user_input: str, previous_interaction_id: str | None, on_stat
 
 WAKE_PROMPT = (
     "(System: the user just woke you up — by voice, clap, or manually. Greet them briefly — "
-    "mention the time and/or weather if it's natural to. 1-2 sentences.)"
+    "mention the time and/or weather if it's natural to, and check their to-do list, mentioning "
+    "anything pending. Keep it tight, 2-3 sentences even with tasks included.)"
 )
 
 # Connections currently viewing the page, so a clap/wake-word can nudge an already-open tab instead
