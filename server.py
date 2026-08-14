@@ -24,18 +24,20 @@ MAX_TOOL_ROUNDS = 8  # safety cap so a confused tool loop can't run forever
 
 def load_config() -> dict:
     config = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    config.setdefault("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
+    # For secrets, fall back to the env var whenever the config.json value is empty/missing — not just
+    # missing. A config.json with an explicit "" placeholder (e.g. copied from config.example.json)
+    # would otherwise permanently shadow a real value set via .env, since setdefault() only fires when
+    # the key is entirely absent.
+    config["gemini_api_key"] = config.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")
+    config["elevenlabs_api_key"] = config.get("elevenlabs_api_key") or os.getenv("ELEVENLABS_API_KEY", "")
+    config["elevenlabs_voice_id"] = config.get("elevenlabs_voice_id") or os.getenv("ELEVENLABS_VOICE_ID", "")
     config.setdefault("gemini_model", "gemini-3-flash-preview")
-    config.setdefault("elevenlabs_api_key", os.getenv("ELEVENLABS_API_KEY", ""))
-    config.setdefault("elevenlabs_voice_id", os.getenv("ELEVENLABS_VOICE_ID", ""))
     config.setdefault("user_name", "sir")
     config.setdefault("default_location", "New York")
     config.setdefault("wake_greeting", "Welcome back, {user_name}. Systems online.")
     config.setdefault("apps", {})
     config.setdefault("server_host", "127.0.0.1")
     config.setdefault("server_port", 8420)
-    if not config["gemini_api_key"]:
-        config["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
     return config
 
 
