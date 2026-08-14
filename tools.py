@@ -53,15 +53,14 @@ def get_weather(location: str | None, default_location: str) -> str:
                 "latitude": lat,
                 "longitude": lon,
                 "current": "temperature_2m,weather_code,wind_speed_10m",
-                "temperature_unit": "fahrenheit",
             },
             timeout=8,
         ).json()
         current = forecast["current"]
         condition = _WEATHER_CODES.get(current["weather_code"], "unknown conditions")
         return (
-            f"{name}: {current['temperature_2m']}°F, {condition}, "
-            f"wind {current['wind_speed_10m']} mph."
+            f"{name}: {current['temperature_2m']}°C, {condition}, "
+            f"wind {current['wind_speed_10m']} km/h."
         )
     except (requests.RequestException, KeyError, IndexError) as e:
         return f"Couldn't fetch weather: {e}"

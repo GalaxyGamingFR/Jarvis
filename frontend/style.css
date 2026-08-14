@@ -84,6 +84,11 @@ body {
   width: min(46vh, 46vw, 420px);
   height: min(46vh, 46vw, 420px);
   overflow: visible;
+  cursor: pointer;
+}
+
+.reactor:hover .core {
+  fill: rgba(76, 224, 255, 0.3);
 }
 
 .ring {
@@ -161,29 +166,6 @@ body {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   min-height: 16px;
-}
-
-/* --- mic button --- */
-.mic-btn {
-  padding: 12px 22px;
-  background: transparent;
-  border: 1px solid var(--accent-dim);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  user-select: none;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.mic-btn:active,
-.mic-btn.active {
-  background: rgba(76, 224, 255, 0.15);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* --- transcript log --- */

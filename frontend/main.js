@@ -1,13 +1,48 @@
 const reactor = document.getElementById("reactor");
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
-const micBtn = document.getElementById("micBtn");
+const micStateEl = document.getElementById("micState");
 
 const ws = new WebSocket(`ws://${location.host}/ws`);
 const autolisten = new URLSearchParams(location.search).get("autolisten") === "1";
 
+const IDLE_TIMEOUT_MS = 20000; // how long to keep the hands-free session open after the last thing said
+let sessionActive = false;
+let idleTimer = null;
+
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function setMicState(text) {
+  micStateEl.textContent = text;
+}
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(endSession, IDLE_TIMEOUT_MS);
+}
+
+function endSession() {
+  sessionActive = false;
+  clearTimeout(idleTimer);
+  setStatus("Standing by");
+  setMicState("Off");
+}
+
+// Click the reactor anytime to immediately mute — the only manual control, since waking is clap-only.
+reactor.addEventListener("click", () => {
+  if (recognition && listening) recognition.stop();
+  window.speechSynthesis.cancel();
+  endSession();
+});
+
+function addBubble(role, text) {
+  const el = document.createElement("div");
+  el.className = `bubble ${role}`;
+  el.textContent = text;
+  logEl.appendChild(el);
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
 // --- clock + weather corner panels ---
@@ -30,9 +65,9 @@ async function refreshStatus() {
     document.getElementById("userName").textContent = data.user_name;
     document.getElementById("location").textContent = data.location;
 
-    const match = data.weather.match(/(-?\d+(?:\.\d+)?)\s*°?F?,\s*(.+?),/);
+    const match = data.weather.match(/(-?\d+(?:\.\d+)?)\s*°?C?,\s*(.+?),/);
     if (match) {
-      document.getElementById("weatherTemp").textContent = `${match[1]}°F`;
+      document.getElementById("weatherTemp").textContent = `${match[1]}°C`;
       document.getElementById("weatherDesc").textContent = match[2];
     } else {
       document.getElementById("weatherDesc").textContent = data.weather;
@@ -43,14 +78,6 @@ async function refreshStatus() {
 }
 refreshStatus();
 setInterval(refreshStatus, 5 * 60 * 1000);
-
-function addBubble(role, text) {
-  const el = document.createElement("div");
-  el.className = `bubble ${role}`;
-  el.textContent = text;
-  logEl.appendChild(el);
-  logEl.scrollTop = logEl.scrollHeight;
-}
 
 function pickBritishVoice() {
   const voices = window.speechSynthesis.getVoices();
@@ -69,7 +96,12 @@ function speak(text, audioB64) {
 
   const onDone = () => {
     reactor.classList.remove("speaking");
-    setStatus("Standing by");
+    if (sessionActive) {
+      resetIdleTimer();
+      startListening();
+    } else {
+      setStatus("Standing by");
+    }
   };
 
   if (audioB64) {
@@ -92,6 +124,9 @@ function speak(text, audioB64) {
 ws.addEventListener("open", () => {
   setStatus("Standing by");
   if (autolisten) {
+    sessionActive = true;
+    setMicState("Active");
+    resetIdleTimer();
     ws.send(JSON.stringify({ type: "wake" }));
   }
 });
@@ -108,10 +143,21 @@ ws.addEventListener("message", (event) => {
 
 ws.addEventListener("close", () => setStatus("Disconnected"));
 
-// --- Speech recognition (push-to-talk) ---
+// --- Speech recognition, driven entirely by clap-wake (no manual control) ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let listening = false;
+let gotResult = false;
+
+function startListening() {
+  if (!recognition || listening) return;
+  listening = true;
+  gotResult = false;
+  reactor.classList.add("listening");
+  setMicState("Listening");
+  setStatus("Listening");
+  recognition.start();
+}
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
@@ -120,10 +166,12 @@ if (SpeechRecognition) {
   recognition.lang = "en-US";
 
   recognition.onresult = (event) => {
+    gotResult = true;
     const transcript = event.results[0][0].transcript.trim();
     if (transcript) {
       addBubble("user", transcript);
       setStatus("Thinking...");
+      resetIdleTimer();
       ws.send(JSON.stringify({ type: "user_message", text: transcript }));
     }
   };
@@ -131,39 +179,16 @@ if (SpeechRecognition) {
   recognition.onend = () => {
     listening = false;
     reactor.classList.remove("listening");
-    micBtn.classList.remove("active");
+    if (!gotResult && sessionActive) {
+      endSession();
+    }
   };
 
   recognition.onerror = () => {
     listening = false;
     reactor.classList.remove("listening");
-    micBtn.classList.remove("active");
-    setStatus("Standing by");
+    if (sessionActive) endSession();
   };
-
-  const startListening = () => {
-    if (listening) return;
-    listening = true;
-    reactor.classList.add("listening");
-    micBtn.classList.add("active");
-    setStatus("Listening");
-    recognition.start();
-  };
-
-  const stopListening = () => {
-    if (!listening) return;
-    recognition.stop();
-  };
-
-  micBtn.addEventListener("mousedown", startListening);
-  micBtn.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    startListening();
-  });
-  micBtn.addEventListener("mouseup", stopListening);
-  micBtn.addEventListener("mouseleave", stopListening);
-  micBtn.addEventListener("touchend", stopListening);
 } else {
-  micBtn.textContent = "Speech recognition not supported — use Chrome";
-  micBtn.disabled = true;
+  setStatus("Speech recognition not supported — use Chrome");
 }
