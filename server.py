@@ -342,10 +342,19 @@ async def ws_endpoint(websocket: WebSocket):
             # Most commonly every key being rate-limited at once, or a transient network error —
             # fail gracefully instead of dropping the whole WebSocket connection.
             print(f"[server] run_agent_turn failed: {e}", flush=True)
-            final_text = "Sorry — I'm having trouble reaching my brain right now. Give it a moment and try again."
+            if is_rate_limit_error(e):
+                final_text = "All my API keys just hit their free-tier limit — give it under a minute and try again."
+            else:
+                final_text = "Sorry — I'm having trouble reaching my brain right now. Give it a moment and try again."
 
         audio_b64 = synthesize_speech(final_text)
-        await websocket.send_json({"type": "assistant_message", "text": final_text, "audio_b64": audio_b64})
+        try:
+            await websocket.send_json({"type": "assistant_message", "text": final_text, "audio_b64": audio_b64})
+        except (WebSocketDisconnect, RuntimeError):
+            # The client can disconnect (tab closed/reloaded) while a slow/retrying Gemini call was
+            # still in flight — sending to an already-closed socket isn't a real failure, just a
+            # response with nowhere left to go.
+            pass
 
     async def external_wake():
         """Triggered by /trigger-wake when clap_trigger.py finds this tab already open."""
