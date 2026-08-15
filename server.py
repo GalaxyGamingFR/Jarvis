@@ -213,7 +213,7 @@ GEMINI_TOOLS = [_to_gemini_tool(s) for s in tools.get_tool_schemas()]
 def _run_with_client(client: genai.Client, user_input, previous_interaction_id, on_status) -> tuple[str, str]:
     interaction = client.interactions.create(
         model=config["gemini_model"],
-        system_instruction=SYSTEM_PROMPT,
+        system_instruction=build_system_prompt(),
         input=user_input,
         tools=GEMINI_TOOLS,
         previous_interaction_id=previous_interaction_id,
