@@ -164,11 +164,12 @@ ws.addEventListener("message", (event) => {
 
 ws.addEventListener("close", () => setStatus("Disconnected"));
 
-// --- Speech recognition, driven entirely by clap-wake (no manual control) ---
+// --- Speech recognition for the actual conversation, once woken (by voice, clap, or a manual click) ---
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let listening = false;
 let gotResult = false;
+let lastErrorWasFatal = false;
 
 function startListening() {
   if (!recognition || listening) return;
@@ -200,15 +201,28 @@ if (SpeechRecognition) {
   recognition.onend = () => {
     listening = false;
     reactor.classList.remove("listening");
-    if (!gotResult && sessionActive) {
-      endSession();
+    if (lastErrorWasFatal) {
+      lastErrorWasFatal = false;
+      if (sessionActive) endSession();
+      return;
+    }
+    if (sessionActive && !gotResult) {
+      // No speech captured this round — Chrome's own internal silence timeout (~5s) is much shorter
+      // than our 20s idle window, so this fires routinely while the mic is just waiting for the user
+      // to start talking. Keep the mic "open" by restarting listening rather than ending the session;
+      // resetIdleTimer() (called on wake/on an actual result) is what decides when to really give up.
+      startListening();
     }
   };
 
-  recognition.onerror = () => {
-    listening = false;
-    reactor.classList.remove("listening");
-    if (sessionActive) endSession();
+  recognition.onerror = (event) => {
+    // Most errors here (no-speech, aborted) are routine and handled via onend's restart above.
+    // Only a real mic-access failure should actually end the session.
+    const fatalErrors = ["not-allowed", "audio-capture", "service-not-allowed"];
+    lastErrorWasFatal = fatalErrors.includes(event.error);
+    if (lastErrorWasFatal) {
+      setStatus(`Microphone error: ${event.error}`);
+    }
   };
 } else {
   setStatus("Speech recognition not supported — use Chrome");
