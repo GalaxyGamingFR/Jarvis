@@ -18,5 +18,26 @@
   "server_port": 8420,
   "clap_threshold": 0.2,
   "wake_word_threshold": 0.5,
-  "mic_device": ""
+  "mic_device": "",
+
+  "obsidian_vault_path": "",
+
+  "ha_url": "",
+  "ha_token": "",
+
+  "email_address": "",
+  "email_app_password": "",
+  "imap_host": "imap.gmail.com",
+  "imap_port": 993,
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "calendar_ics_url": "",
+
+  "macros": {
+    "work session": [
+      {"action": "launch_app", "target": "vscode"},
+      {"action": "launch_app", "target": "chrome"},
+      {"action": "launch_app", "target": "spotify"}
+    ]
+  }
 }

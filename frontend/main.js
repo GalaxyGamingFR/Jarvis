@@ -159,6 +159,12 @@ ws.addEventListener("message", (event) => {
   } else if (msg.type === "assistant_message") {
     addBubble("assistant", msg.text);
     speak(msg.text, msg.audio_b64);
+  } else if (msg.type === "proactive_message") {
+    // A timer/reminder/etc. firing unprompted (see proactive.py) — speak it, but don't open the
+    // mic afterward the way a real wake does; speak()'s onDone already falls back to "Standing by"
+    // when sessionActive is false, which is exactly what we want here.
+    addBubble("assistant", msg.text);
+    speak(msg.text, msg.audio_b64);
   }
 });
 

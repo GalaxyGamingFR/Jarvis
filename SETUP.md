@@ -39,6 +39,14 @@ Edit `config.json`:
 | `mic_device` | Substring of the exact microphone name to listen on (e.g. `"AMD Audio Dev"`), used by `wake_word_trigger.py`/`clap_trigger.py`. Windows often defaults to the wrong device (virtual/streaming mics are common culprits) — if wake detection isn't working, check Windows Settings → Sound → Input for which device actually shows activity when you talk, and put its name here. |
 | `wake_word_threshold` | Confidence (0–1) the "Hey Jarvis" detector needs to trigger. Default `0.5`. Lower if it's not triggering, raise if it's too trigger-happy. |
 | `clap_threshold` | Only used by the legacy `clap_trigger.py`. Mic RMS level (0–1) that counts as a clap. |
+| `obsidian_vault_path` | Optional. Folder path to your Obsidian vault, enabling `search_notes`/`read_note`/`list_recent_notes`. Leave blank to skip. |
+| `ha_url` / `ha_token` | Optional. Home Assistant base URL (e.g. `http://homeassistant.local:8123`) and a long-lived access token, enabling smart home control. Generate a token from your HA user profile's "Long-Lived Access Tokens" section. |
+| `email_address` / `email_app_password` | Optional. Enables email tools via IMAP/SMTP. For Gmail, generate an [app password](https://myaccount.google.com/apppasswords) (needs 2FA enabled) — don't use your real account password. |
+| `imap_host`/`imap_port`, `smtp_host`/`smtp_port` | Only needed for non-Gmail providers — defaults already point at Gmail. |
+| `calendar_ics_url` | Optional. Your calendar's "secret address in iCal format" (Google Calendar: Settings → your calendar → "Secret address in iCal format"). Enables `get_todays_events`/`get_upcoming_events`. |
+| `macros` | Optional. Named multi-step workflows the `run_macro` tool can execute — see the example in `config.example.json`. Currently supports `launch_app` steps. |
+
+Every one of these is independently optional — Jarvis works fine with none of them set, and each tool reports plainly that it "isn't configured" rather than failing silently if you skip it.
 
 ### Getting a JARVIS-style voice (optional but recommended)
 
@@ -94,5 +102,8 @@ in Windows Task Scheduler as an "At log on" trigger, action: `powershell.exe -Fi
   (optionally) ElevenLabs for TTS. Screen captures and browser automation never leave your machine
   except as part of what you explicitly ask Jarvis to look at.
 - **Extending it**: `tools.py` is the single place tool schemas + dispatch live — add a function
-  there (and to whichever module makes sense) to give Jarvis a new capability. A personal knowledge
-  base (RAG over your notes/Obsidian vault) is a natural next addition once the core loop feels good.
+  there (and to whichever module makes sense) to give Jarvis a new capability. Jarvis now has
+  persistent memory (`memory.py`), media/system control (`system_control.py`), timers & reminders
+  with proactive spoken alerts (`timers.py` + `proactive.py`), local file search (`file_search.py`),
+  email/calendar (`email_calendar.py`), smart home control (`smart_home.py`), clipboard access
+  (`clipboard_tools.py`), Obsidian note search (`obsidian_notes.py`), and macros (`macros.py`).

@@ -10,3 +10,6 @@ requests
 websockets
 openwakeword
 scipy
+pycaw
+winsdk
+icalendar

@@ -4,7 +4,10 @@ __pycache__/
 venv/
 config.json
 tasks.json
+memory.json
+timers.json
 .env
 memory/
 *.log
 .DS_Store
+claude-memory/

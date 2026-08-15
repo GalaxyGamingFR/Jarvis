@@ -14,6 +14,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google import genai
 
+from contextlib import asynccontextmanager
+
+import proactive
+import timers
 import tools
 
 load_dotenv()
@@ -85,7 +89,7 @@ def is_rate_limit_error(e: Exception) -> bool:
     text = f"{type(e).__name__} {e}".lower()
     return "429" in text or "quota" in text or ("rate" in text and "limit" in text)
 
-SYSTEM_PROMPT = f"""You are Jarvis, {config['user_name']}'s personal AI assistant, in the spirit of \
+BASE_SYSTEM_PROMPT = f"""You are Jarvis, {config['user_name']}'s personal AI assistant, in the spirit of \
 Tony Stark's AI: dry, witty, imperturbable, and always a step ahead — but genuinely useful, not just \
 sarcastic for its own sake. Address the user as "{config['user_name']}" occasionally, not every line.
 
@@ -94,10 +98,46 @@ One to three sentences unless the user asks for detail. No markdown, no bullet p
 just natural spoken language.
 
 You have tools to search the web, open and read pages, view the user's screen, launch apps, check \
-the weather, check the time/date, and manage a to-do list (list/add/complete tasks). Use them \
-proactively when they'd help — don't ask permission first, just do it and report back concisely."""
+the weather, check the time/date, manage a to-do list (list/add/complete tasks), control media \
+playback and volume, check what's currently playing, lock or sleep the PC, set timers and reminders, \
+search and read local files, check email and calendar, control smart home devices, read/write the \
+clipboard, search Obsidian notes, and run configured multi-step macros. Use them proactively when \
+they'd help — don't ask permission first, just do it and report back concisely. Several of these \
+(email, smart home, calendar) need setup in config.json before they'll work — if one reports it isn't \
+configured, tell the user plainly what to add rather than pretending it worked.
 
-app = FastAPI()
+You can also remember durable facts about the user (preferences, people, projects, habits) with the \
+remember tool, and forget them with forget. Use remember proactively whenever the user states \
+something durable about themselves — don't wait to be asked."""
+
+
+def build_system_prompt() -> str:
+    """Rebuilds the system prompt each turn so newly remembered facts show up without a restart."""
+    facts = tools.memory.load_facts()
+    if not facts:
+        return BASE_SYSTEM_PROMPT
+    facts_block = "\n".join(f"- {f}" for f in facts)
+    return (
+        f"{BASE_SYSTEM_PROMPT}\n\nThings you know about {config['user_name']} from previous "
+        f"conversations (use them naturally, don't announce that you're consulting memory):\n{facts_block}"
+    )
+
+_proactive_task: asyncio.Task | None = None  # module-level so it can't be GC'd mid-run (see below)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _proactive_task
+    # asyncio.create_task() only holds a weak reference — without keeping one ourselves (same
+    # gotcha /trigger-wake's _background_tasks works around below), the loop could get
+    # garbage-collected and silently die. proactive_poll_loop is defined further down this file;
+    # that's fine — it's only looked up by name once this actually runs, well after the whole
+    # module has finished loading.
+    _proactive_task = asyncio.create_task(proactive_poll_loop())
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "frontend")), name="static")
 
 
@@ -348,6 +388,26 @@ async def trigger_wake():
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
     return {"woke": len(active_connections)}
+
+
+async def proactive_poll_loop():
+    """Periodically checks for due timers/reminders and anything else queued via proactive.py, and
+    speaks them into any connection that isn't mid-conversation. See proactive.py's module docstring
+    for the full design rationale — this is that spec, implemented.
+    """
+    while True:
+        await asyncio.sleep(5)
+        due = timers.get_due_items() + proactive.drain_queue()
+        if not due:
+            continue
+        for connection in list(active_connections):
+            if is_connection_active(connection):
+                continue  # mid-conversation — don't talk over the user, just drop it this cycle
+            for text in due:
+                audio_b64 = synthesize_speech(text)
+                await connection["websocket"].send_json(
+                    {"type": "proactive_message", "text": text, "audio_b64": audio_b64}
+                )
 
 
 if __name__ == "__main__":

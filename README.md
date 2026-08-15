@@ -14,8 +14,14 @@ usage-based billing) and, optionally, ElevenLabs for a richer voice.
   scratch if none is open.
 - **Hands-free conversation** — wakes, greets you with the time/weather/pending tasks, listens for
   what you say, responds, and keeps listening for follow-ups until you go quiet or click to mute.
-- **Real tool use** — web search & page reading, screen vision, app launching, weather, a to-do list —
-  not just a chatbot.
+- **Real tool use** — web search & page reading, screen vision, app launching, weather, a to-do list,
+  media/volume control, locking/sleeping the PC, timers & reminders, local file search, email &
+  calendar, smart home control (Home Assistant), clipboard read/write, Obsidian note search, and
+  multi-step macros — not just a chatbot.
+- **Persistent memory** — remembers durable facts about you across restarts (preferences, people,
+  projects) and works them into conversation naturally, without you needing to remind it.
+- **Proactive alerts** — a timer or reminder firing speaks up on its own, even if you're not mid-
+  conversation.
 - **JARVIS-style HUD** — an animated reactor core with live time/weather/status readouts, no
   cluttered chat UI.
 - **$0 to run** — Gemini's free API tier is rate-limited, not metered.
@@ -49,6 +55,16 @@ Then say "Hey Jarvis" near your mic.
 | `screen_capture.py` | Screenshot → Claude/Gemini vision |
 | `app_launcher.py` | Launches configured apps (Spotify, VS Code, etc.) |
 | `tasks.py` | Local to-do list |
+| `memory.py` | Persistent facts about the user, injected into the system prompt every turn |
+| `system_control.py` | Media playback, volume, now-playing, lock/sleep (Windows) |
+| `timers.py` | Timers & reminders; `get_due_items()` is polled by `server.py` to fire alerts |
+| `proactive.py` | Queue Jarvis speaks unprompted — the hand-off point timers/reminders use |
+| `file_search.py` | Local filesystem search & read |
+| `email_calendar.py` | Email (IMAP/SMTP) and calendar (ICS feed) |
+| `smart_home.py` | Home Assistant device control |
+| `clipboard_tools.py` | Windows clipboard read/write |
+| `obsidian_notes.py` | Search/read notes directly from an Obsidian vault on disk |
+| `macros.py` | Config-driven multi-step workflows (e.g. "start my work session") |
 | `frontend/` | The HUD web UI (no framework — plain HTML/CSS/JS) |
 | `config.example.json` | Copy to `config.json` and fill in |
 
