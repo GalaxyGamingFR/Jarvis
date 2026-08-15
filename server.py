@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -239,16 +240,37 @@ WAKE_PROMPT = (
 active_connections: list[dict] = []
 
 
+SESSION_ACTIVE_MAX_AGE_S = 45  # auto-expire a stale "active" flag rather than blocking wake forever
+
+
+def is_connection_active(connection: dict) -> bool:
+    """Whether this connection currently considers itself mid-conversation (awake and either listening
+    or speaking) — used to stop the wake listener from re-triggering on Jarvis's own voice coming back
+    through the mic (a classic smart-speaker feedback problem).
+
+    Self-expires: a tab that goes away without cleanly sending session_state=false (a crashed page, a
+    stuck/zombied browser context, a network drop the server hasn't noticed yet) would otherwise leave
+    session_active stuck true forever, silently blocking every future wake attempt — a much worse
+    failure mode than the spam this was built to prevent.
+    """
+    return (
+        connection["session_active"]
+        and (time.monotonic() - connection["session_active_since"]) < SESSION_ACTIVE_MAX_AGE_S
+    )
+
+
 def any_session_active() -> bool:
-    """Whether any connected tab currently considers itself mid-conversation (awake and either
-    listening or speaking) — used to stop the wake listener from re-triggering on Jarvis's own voice
-    coming back through the mic (a classic smart-speaker feedback problem)."""
-    return any(c["session_active"] for c in active_connections)
+    return any(is_connection_active(c) for c in active_connections)
 
 
 @app.get("/session-active")
 def session_active_endpoint():
     return {"active": any_session_active()}
+
+
+def mark_session_active(connection: dict, active: bool) -> None:
+    connection["session_active"] = active
+    connection["session_active_since"] = time.monotonic()
 
 
 @app.websocket("/ws")
@@ -283,11 +305,12 @@ async def ws_endpoint(websocket: WebSocket):
 
     async def external_wake():
         """Triggered by /trigger-wake when clap_trigger.py finds this tab already open."""
-        connection["session_active"] = True
+        mark_session_active(connection, True)
         await websocket.send_json({"type": "wake_push"})
         await handle_turn(WAKE_PROMPT)
 
-    connection = {"websocket": websocket, "external_wake": external_wake, "session_active": False}
+    connection = {"websocket": websocket, "external_wake": external_wake, "session_active": False,
+                  "session_active_since": 0.0}
     active_connections.append(connection)
 
     try:
@@ -296,12 +319,13 @@ async def ws_endpoint(websocket: WebSocket):
             msg = json.loads(raw)
 
             if msg["type"] == "wake":
-                connection["session_active"] = True
+                mark_session_active(connection, True)
                 await handle_turn(WAKE_PROMPT)
             elif msg["type"] == "user_message":
+                mark_session_active(connection, True)  # refresh — an ongoing conversation stays "fresh"
                 await handle_turn(msg["text"])
             elif msg["type"] == "session_state":
-                connection["session_active"] = bool(msg.get("active"))
+                mark_session_active(connection, bool(msg.get("active")))
     except WebSocketDisconnect:
         pass
     finally:
@@ -316,7 +340,7 @@ async def trigger_wake():
     """clap_trigger.py calls this when it found and refocused an already-open Jarvis window,
     so that tab starts listening without needing a full page reload."""
     for connection in list(active_connections):
-        if connection["session_active"]:
+        if is_connection_active(connection):
             continue  # already mid-conversation — don't layer a duplicate greeting on top
         # asyncio only holds a weak reference to tasks — without keeping one ourselves, the task
         # can get garbage-collected mid-run and silently never finish.
